@@ -7,7 +7,7 @@
 
 import { ExecutionResult } from 'graphql';
 import {
-  GRAPHQL_TRANSPORT_WS_PROTOCOL,
+  // GRAPHQL_TRANSPORT_WS_PROTOCOL,
   CloseCode,
   Sink,
   ID,
