@@ -1,3 +1,4 @@
+/// <reference path="../node_modules/miniprogram-api-typings/index.d.ts" />
 /**
  *
  * client
@@ -192,6 +193,15 @@ export type EventListener<E extends Event> = E extends EventConnecting
   ? EventErrorListener
   : never;
 
+
+
+export type WeappWebSocket = WechatMiniprogram.SocketTask & {
+  readyState: number
+  CLOSED: 3
+  CLOSING: 2
+  CONNECTING: 0
+  OPEN: 1
+}
 /**
  * Configuration used for the GraphQL over WebSocket client.
  *
@@ -211,7 +221,7 @@ export interface ClientOptions<
    * where subsequent reconnects (due to auth) may have a refreshed identity token in
    * the URL.
    */
-  url: string | (() => Promise<string> | string);
+  // url: string | (() => Promise<string> | string);
   /**
    * Optional parameters, passed through the `payload` field with the `ConnectionInit` message,
    * that the client specifies when establishing a connection with the server. You can use this
@@ -400,7 +410,7 @@ export interface ClientOptions<
    * one provided by the global scope. Mostly useful for when
    * using the client outside of the browser environment.
    */
-  webSocketImpl?: unknown;
+  // webSocketImpl?: unknown;
   /**
    * A custom ID generator for identifying subscriptions.
    *
@@ -423,6 +433,8 @@ export interface ClientOptions<
    * datatypes out to the client.
    */
   jsonMessageReplacer?: JSONMessageReplacer;
+
+  task: WeappWebSocket
 }
 
 /** @category Client */
@@ -464,7 +476,7 @@ export function createClient<
   P extends ConnectionInitMessage['payload'] = ConnectionInitMessage['payload'],
 >(options: ClientOptions<P>): Client {
   const {
-    url,
+    // url,
     connectionParams,
     lazy = true,
     onNonLazyError = console.error,
@@ -482,15 +494,16 @@ export function createClient<
         setTimeout(
           resolve,
           retryDelay +
-            // add random timeout from 300ms to 3s
-            Math.floor(Math.random() * (3000 - 300) + 300),
+          // add random timeout from 300ms to 3s
+          Math.floor(Math.random() * (3000 - 300) + 300),
         ),
       );
     },
     shouldRetry = isLikeCloseEvent,
     isFatalConnectionProblem,
     on,
-    webSocketImpl,
+    task,
+
     /**
      * Generates a v4 UUID to be used as the ID using `Math`
      * as the random number generator. Supply your own generator
@@ -508,31 +521,6 @@ export function createClient<
     jsonMessageReplacer: replacer,
     jsonMessageReviver: reviver,
   } = options;
-
-  let ws;
-  if (webSocketImpl) {
-    if (!isWebSocket(webSocketImpl)) {
-      throw new Error('Invalid WebSocket implementation provided');
-    }
-    ws = webSocketImpl;
-  } else if (typeof WebSocket !== 'undefined') {
-    ws = WebSocket;
-  } else if (typeof global !== 'undefined') {
-    ws =
-      global.WebSocket ||
-      // @ts-expect-error: Support more browsers
-      global.MozWebSocket;
-  } else if (typeof window !== 'undefined') {
-    ws =
-      window.WebSocket ||
-      // @ts-expect-error: Support more browsers
-      window.MozWebSocket;
-  }
-  if (!ws)
-    throw new Error(
-      "WebSocket implementation missing; on Node you can `import WebSocket from 'ws';` and pass `webSocketImpl: WebSocket` to `createClient`",
-    );
-  const WebSocketImpl = ws;
 
   // websocket status emitter, subscriptions are handled differently
   const emitter = (() => {
@@ -597,7 +585,7 @@ export function createClient<
     ];
   }
 
-  type Connected = [socket: WebSocket, throwOnClose: Promise<void>];
+  type Connected = [socket: WeappWebSocket, throwOnClose: Promise<void>];
   let connecting: Promise<Connected> | undefined,
     locks = 0,
     lazyCloseTimeout: ReturnType<typeof setTimeout>,
@@ -606,7 +594,7 @@ export function createClient<
     disposed = false;
   async function connect(): Promise<
     [
-      socket: WebSocket,
+      socket: WeappWebSocket,
       release: () => void,
       waitForReleaseOrThrowOnClose: Promise<void>,
     ]
@@ -631,10 +619,8 @@ export function createClient<
           }
 
           emitter.emit('connecting');
-          const socket = new WebSocketImpl(
-            typeof url === 'function' ? await url() : url,
-            GRAPHQL_TRANSPORT_WS_PROTOCOL,
-          );
+          const socket = task
+
 
           let connectionAckTimeout: ReturnType<typeof setTimeout>,
             queuedPing: ReturnType<typeof setTimeout>;
@@ -642,8 +628,10 @@ export function createClient<
             if (isFinite(keepAlive) && keepAlive > 0) {
               clearTimeout(queuedPing); // in case where a pong was received before a ping (this is valid behaviour)
               queuedPing = setTimeout(() => {
-                if (socket.readyState === WebSocketImpl.OPEN) {
-                  socket.send(stringifyMessage({ type: MessageType.Ping }));
+                if (socket.readyState === socket.OPEN) {
+                  socket.send({
+                    data: stringifyMessage({ type: MessageType.Ping })
+                  });
                   emitter.emit('ping', false, undefined);
                 }
               }, keepAlive);
@@ -657,15 +645,17 @@ export function createClient<
             denied(errOrEvent);
 
             if (isLikeCloseEvent(errOrEvent) && errOrEvent.code === 4499) {
-              socket.close(4499, 'Terminated'); // close event is artificial and emitted manually, see `Client.terminate()` below
-              socket.onerror = null;
-              socket.onclose = null;
+              socket.close({
+                code: 4499,
+                reason: 'Terminated',
+              });   // close event is artificial and emitted manually, see `Client.terminate()` below
+              socket.onError(() => undefined)
+              socket.onClose(() => undefined);
             }
           });
-          socket.onerror = (err) => emitter.emit('error', err);
-          socket.onclose = (event) => emitter.emit('closed', event);
-
-          socket.onopen = async () => {
+          socket.onError((err) => emitter.emit('error', err));
+          socket.onClose((event) => emitter.emit('closed', event))
+          socket.onOpen(async () => {
             try {
               emitter.emit('opened', socket);
               const payload =
@@ -675,21 +665,24 @@ export function createClient<
 
               // connectionParams might take too long causing the server to kick off the client
               // the necessary error/close event is already reported - simply stop execution
-              if (socket.readyState !== WebSocketImpl.OPEN) return;
+              if (socket.readyState !== socket.OPEN) return;
 
               socket.send(
-                stringifyMessage<MessageType.ConnectionInit>(
-                  payload
-                    ? {
+                {
+                  data: stringifyMessage<MessageType.ConnectionInit>(
+                    payload
+                      ? {
                         type: MessageType.ConnectionInit,
                         payload,
                       }
-                    : {
+                      : {
                         type: MessageType.ConnectionInit,
                         // payload is completely absent if not provided
                       },
-                  replacer,
-                ),
+                    replacer,
+                  ),
+                }
+
               );
 
               if (
@@ -698,8 +691,10 @@ export function createClient<
               ) {
                 connectionAckTimeout = setTimeout(() => {
                   socket.close(
-                    CloseCode.ConnectionAcknowledgementTimeout,
-                    'Connection acknowledgement timeout',
+                    {
+                      code: CloseCode.ConnectionAcknowledgementTimeout,
+                      reason: 'Connection acknowledgement timeout',
+                    }
                   );
                 }, connectionAckWaitTimeout);
               }
@@ -708,17 +703,19 @@ export function createClient<
             } catch (err) {
               emitter.emit('error', err);
               socket.close(
-                CloseCode.InternalClientError,
-                limitCloseReason(
-                  err instanceof Error ? err.message : new Error(err).message,
-                  'Internal client error',
-                ),
+                {
+                  code: CloseCode.InternalClientError,
+                  reason: limitCloseReason(
+                    err instanceof Error ? err.message : new Error(err).message,
+                    'Internal client error',
+                  ),
+                }
               );
             }
-          };
+          })
 
           let acknowledged = false;
-          socket.onmessage = ({ data }) => {
+          socket.onMessage(({ data }) => {
             try {
               const message = parseMessage(data, reviver);
               emitter.emit('message', message);
@@ -729,17 +726,20 @@ export function createClient<
                 } else if (!disablePong) {
                   // respond with pong on ping
                   socket.send(
-                    stringifyMessage(
-                      message.payload
-                        ? {
+                    {
+                      data: stringifyMessage(
+                        message.payload
+                          ? {
                             type: MessageType.Pong,
                             payload: message.payload,
                           }
-                        : {
+                          : {
                             type: MessageType.Pong,
                             // payload is completely absent if not provided
                           },
-                    ),
+                      ),
+                    }
+
                   );
                   emitter.emit('pong', false, message.payload);
                 }
@@ -761,22 +761,23 @@ export function createClient<
                 new Promise<void>((_, reject) => errorOrClosed(reject)),
               ]);
             } catch (err) {
-              socket.onmessage = null; // stop reading messages as soon as reading breaks once
+              socket.onMessage(() => undefined); // stop reading messages as soon as reading breaks once
               emitter.emit('error', err);
-              socket.close(
-                CloseCode.BadResponse,
-                limitCloseReason(
+              socket.close({
+                code: CloseCode.BadResponse,
+                reason: limitCloseReason(
                   err instanceof Error ? err.message : new Error(err).message,
                   'Bad response',
                 ),
+              }
               );
             }
-          };
+          });
         })(),
       )));
 
     // if the provided socket is in a closing state, wait for the throw on close
-    if (socket.readyState === WebSocketImpl.CLOSING) await throwOnClose;
+    if (socket.readyState === socket.CLOSING) await throwOnClose;
 
     let release = () => {
       // releases this connection
@@ -791,12 +792,15 @@ export function createClient<
         released.then(() => {
           if (!locks) {
             // and if no more locks are present, complete the connection
-            const complete = () => socket.close(1000, 'Normal Closure');
+            const complete = () => socket.close({
+              code: 1000,
+              reason: 'Normal Closure'
+            });
             if (isFinite(lazyCloseTimeoutMs) && lazyCloseTimeoutMs > 0) {
               // if the keepalive is set, allow for the specified calmdown time and
               // then complete if the socket is still open.
               lazyCloseTimeout = setTimeout(() => {
-                if (socket.readyState === WebSocketImpl.OPEN) complete();
+                if (socket.readyState === socket.OPEN) complete();
               }, lazyCloseTimeoutMs);
             } else {
               // otherwise complete immediately
@@ -860,7 +864,7 @@ export function createClient<
   if (!lazy) {
     (async () => {
       locks++;
-      for (;;) {
+      for (; ;) {
         try {
           const [, , throwOnClose] = await connect();
           await throwOnClose; // will always throw because releaser is not used
@@ -891,7 +895,7 @@ export function createClient<
 
       (async () => {
         locks++;
-        for (;;) {
+        for (; ;) {
           try {
             const [socket, release, waitForReleaseOrThrowOnClose] =
               await connect();
@@ -921,27 +925,32 @@ export function createClient<
             });
 
             socket.send(
-              stringifyMessage<MessageType.Subscribe>(
-                {
-                  id,
-                  type: MessageType.Subscribe,
-                  payload,
-                },
-                replacer,
-              ),
+              {
+                data: stringifyMessage<MessageType.Subscribe>(
+                  {
+                    id,
+                    type: MessageType.Subscribe,
+                    payload,
+                  },
+                  replacer,
+                ),
+              }
+
             );
 
             releaser = () => {
-              if (!done && socket.readyState === WebSocketImpl.OPEN)
+              if (!done && socket.readyState === socket.OPEN)
                 // if not completed already and socket is open, send complete message to server on release
                 socket.send(
-                  stringifyMessage<MessageType.Complete>(
-                    {
-                      id,
-                      type: MessageType.Complete,
-                    },
-                    replacer,
-                  ),
+                  {
+                    data: stringifyMessage<MessageType.Complete>(
+                      {
+                        id,
+                        type: MessageType.Complete,
+                      },
+                      replacer,
+                    ),
+                  }
                 );
               locks--;
               done = true;
@@ -977,7 +986,10 @@ export function createClient<
       if (connecting) {
         // if there is a connection, close it
         const [socket] = await connecting;
-        socket.close(1000, 'Normal Closure');
+        socket.close({
+          code: 1000,
+          reason: 'Normal Closure'
+        });
       }
     },
     terminate() {
@@ -1022,13 +1034,13 @@ function isFatalInternalCloseCode(code: number): boolean {
   return code >= 1000 && code <= 1999;
 }
 
-function isWebSocket(val: unknown): val is typeof WebSocket {
-  return (
-    typeof val === 'function' &&
-    'constructor' in val &&
-    'CLOSED' in val &&
-    'CLOSING' in val &&
-    'CONNECTING' in val &&
-    'OPEN' in val
-  );
-}
+// function isWebSocket(val: unknown): val is typeof WebSocket {
+//   return (
+//     typeof val === 'function' &&
+//     'constructor' in val &&
+//     'CLOSED' in val &&
+//     'CLOSING' in val &&
+//     'CONNECTING' in val &&
+//     'OPEN' in val
+//   );
+// }

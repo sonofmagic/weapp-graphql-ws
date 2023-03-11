@@ -1,8 +1,10 @@
 {
-  "name": "graphql-ws",
-  "version": "5.12.0",
-  "description": "Coherent, zero-dependency, lazy, simple, GraphQL over WebSocket Protocol compliant server and client",
+  "name": "weapp-graphql-ws",
+  "version": "0.0.1",
+  "description": "(WIP) A GraphQL client for weapp. forked from graphql-ws",
   "keywords": [
+    "weapp",
+    "wechat",
     "protocol",
     "graphql",
     "transport",
@@ -12,22 +14,19 @@
     "client",
     "observables",
     "express",
-    "relay",
-    "apollo",
-    "fastify",
-    "uwebsockets"
+    "relay"
   ],
-  "author": "Denis Badurina <badurinadenis@gmail.com>",
+  "author": "sonofmagic <qq1324318532@gmail.com>",
   "license": "MIT",
-  "homepage": "https://github.com/enisdenjo/graphql-ws#readme",
+  "homepage": "https://github.com/sonofmagic/weapp-graphql-ws#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/enisdenjo/graphql-ws.git"
+    "url": "https://github.com/sonofmagic/weapp-graphql-ws.git"
   },
   "engines": {
     "node": ">=10"
   },
-  "packageManager": "yarn@3.4.1",
+  "packageManager": "pnpm@7.27.1",
   "types": "lib/index.d.ts",
   "main": "lib/index.js",
   "module": "lib/index.mjs",
@@ -38,26 +37,6 @@
       "require": "./lib/index.js",
       "import": "./lib/index.mjs",
       "browser": "./umd/graphql-ws.js"
-    },
-    "./lib/use/ws": {
-      "types": "./lib/use/ws.d.ts",
-      "require": "./lib/use/ws.js",
-      "import": "./lib/use/ws.mjs"
-    },
-    "./lib/use/uWebSockets": {
-      "types": "./lib/use/uWebSockets.d.ts",
-      "require": "./lib/use/uWebSockets.js",
-      "import": "./lib/use/uWebSockets.mjs"
-    },
-    "./lib/use/@fastify/websocket": {
-      "types": "./lib/use/@fastify/websocket.d.ts",
-      "require": "./lib/use/@fastify/websocket.js",
-      "import": "./lib/use/@fastify/websocket.mjs"
-    },
-    "./lib/use/fastify-websocket": {
-      "types": "./lib/use/fastify-websocket.d.ts",
-      "require": "./lib/use/fastify-websocket.js",
-      "import": "./lib/use/fastify-websocket.mjs"
     },
     "./package.json": "./package.json"
   },
@@ -85,7 +64,7 @@
     "bench": "k6 run benchmark/k6.mjs",
     "build:esm": "tsc -b tsconfig.esm.json && node scripts/esm-post-process.mjs",
     "build:cjs": "tsc -b tsconfig.cjs.json",
-    "build:umd": "rollup --bundleConfigAsCjs --config rollup.config.ts --configPlugin typescript && gzip umd/graphql-ws.min.js -c > umd/graphql-ws.min.js.gz",
+    "build:umd": "rollup --bundleConfigAsCjs --config rollup.config.ts --configPlugin typescript",
     "build": "yarn build:esm && yarn build:cjs && yarn build:umd",
     "release": "semantic-release"
   },
@@ -121,6 +100,7 @@
     "jest": "^29.4.3",
     "jest-environment-jsdom": "^29.4.3",
     "jest-jasmine2": "^29.4.3",
+    "miniprogram-api-typings": "^3.9.0",
     "prettier": "^2.8.4",
     "replacestream": "^4.0.3",
     "rollup": "^3.18.0",
@@ -129,9 +109,6 @@
     "tslib": "^2.5.0",
     "typedoc": "^0.23.26",
     "typedoc-plugin-markdown": "^3.14.0",
-    "typescript": "^4.9.5",
-    "uWebSockets.js": "uNetworking/uWebSockets.js#v20.19.0",
-    "ws": "8.12.0",
-    "ws7": "npm:ws@^7.5.9"
+    "typescript": "^4.9.5"
   }
 }
